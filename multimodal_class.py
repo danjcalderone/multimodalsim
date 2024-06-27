@@ -2,7 +2,7 @@
 import os
 #### path to folder with VRP solver module
 path_to_VRPsolver = '/Users/dan/Documents/transit_webapp/' ### UPDATE FOR YOUR SYSTEM...
-path_to_multimodalsim = '/Users/dan/Documents/multimodal/'
+path_to_multimodalsim = '/Users/dan/Documents/multimodalsim/'
 
 os.chdir(path_to_VRPsolver)
 from core import db, optimizer
@@ -5108,17 +5108,34 @@ class WORLD:
         self.CONVERTER = CONVERTER(params = params2);
 
 
-    def initSTATS(self,version='agrima_code'):
+
+    def initREGIONS(self,version='agrima_code'):
 
         path2 = self.groups_regions_geojson
         # group_polygons,group_data = generate_polygons('from_geojson',path = path2);
-        group_polygons,group_data,full_region = self.generate_polygons('from_named_regions',path = path2,
+        temp = self.generate_polygons('from_named_regions',path = path2,
                                                         region_details=self.region_assignment);
 
-        self.full_region = full_region
+        self.full_region = temp['full_region']
+        self.group_polygons = temp['group_polygons']
+        self.group_polygons_dict = temp['group_polygons_dict'];
+        self.group_polygon_data = temp['group_data'];
 
-        self.group_polygons = group_polygons
-        self.group_polygon_data = group_data;
+        # print('full_region:',self.full_region);
+        # print('group_polygons:',self.group_polygons);
+        # print('group_polygons:',self.group_polygons_dict);
+
+    def initSTATS(self,version='agrima_code'):
+
+        # path2 = self.groups_regions_geojson
+        # # group_polygons,group_data = generate_polygons('from_geojson',path = path2);
+        # temp = self.generate_polygons('from_named_regions',path = path2,
+        #                                                 region_details=self.region_assignment);
+
+        # self.full_region = temp['full_region']
+        # self.group_polygons = temp['group_polygons']
+        # self.group_polygons_dict = temp['group_polygons_dict'];
+        # self.group_polygon_data = temp['group_data'];
         
         # path3 = self.groups_pickup_regions_geojson
         # path4 = self.groups_dropoff_regions_geojson
@@ -5127,7 +5144,7 @@ class WORLD:
         # self.group_pickup_polygons = group_pickup_polygons
         # self.group_dropoff_polygons = group_dropoff_polygons
 
-        self.grpsDF = self.createGroupsDF(group_polygons,geojson_data = group_data); #,group_pickup_polygons,group_dropoff_polygons);
+        self.grpsDF = self.createGroupsDF(self.group_polygons_dict,geojson_data = self.group_polygon_data); #,group_pickup_polygons,group_dropoff_polygons);
 
         
         # params3 = {'num_drivers':16,
@@ -5137,7 +5154,10 @@ class WORLD:
 
         self.driversDF = {};
         for group in list(self.grpsDF['group']):
-            num_drivers = 10;
+
+            num_drivers = 10; #self.region_assignment['num_drivers']
+
+
             if group in self.num_drivers_per_group:
                 num_drivers = int(self.num_drivers_per_group[group]);
             print('adding',num_drivers,'to',group,'...')
@@ -5164,7 +5184,7 @@ class WORLD:
         params['SEG_TYPES'] = generate_segtypes('reg8') # reg7 reg1,reg2,bg
 
 
-        cent_pt = np.array(center_point)
+        cent_pt = np.array(center_point);
         # dest_shift = np.array([0.001,-0.000]);
         dest_shift = np.array([0.003,-0.005]);
         orig_shift = np.array([0.022,-0.04]);
@@ -5276,7 +5296,7 @@ class WORLD:
 
             #### Reading American Commuter Survey data set (pandas dataframes)
             ### information about vehicle ussage 
-            VEHS = pd.read_csv('data/pop/ACSDT5Y2020.B992512-Data.csv')
+            VEHS = pd.read_csv('INPUTS/vehs.csv'); #pop/ACSDT5Y2020.B992512-Data.csv')
             # BGDEFS['AFFGEOID']
             #VEHS = VEHS.rename(columns={'B992512_001E':'from_cbg','home_geo':'from_geo','w_geocode':'to_cbg','work_geo':'to_geo'}).drop(columns=['return_time'])[['from_cbg', 'to_cbg', 'total_jobs', 'go_time', 'from_geo', 'to_geo']]
             VEHS = VEHS.rename(columns={'GEO_ID':'AFFGEOID','B992512_001E':'workers','B992512_002E':'wout_cars','B992512_003E':'w_cars'}).drop(columns=['B992512_001EA','B992512_002EA','B992512_003EA','Unnamed: 8'])
@@ -5485,6 +5505,18 @@ class WORLD:
         elif not(isinstance(params['wc_capacity'],list)): wc_capacities = [params['wc_capacity'] for _ in range(num_drivers)]
         OUT = pd.DataFrame({'start_time':start_times, 'end_time':end_times,'am_capacity':am_capacities, 'wc_capacity':wc_capacities})
         return OUT
+
+
+    def plotREGIONS(self,includes={},figsize=(5,5),specregions =[]):
+        #fig,axs = plt.subplots(1,3,figsize=(12,4));
+        include_labels = False;
+        if 'labels' in includes: include_labels = includes['labels']
+        polys = self.group_polygons_dict;
+
+        if len(specregions) > 0:
+            polys = {lab:polys[lab] for lab in specregions};
+
+        plotShapesOnGraph(self.GRAPHS,polys,figsize=figsize,show_labels=include_labels); #,save_file=save_file); #,ax=axs[2]); #axs[1]);
 
 
     def plotPRELIMINARIES(self,include_ods = True,include_grp_regions = True, include_demand_curves=False,save_file=None,figsize=(5,5)):
@@ -7462,6 +7494,7 @@ class WORLD:
                     if not(group in output): output[group] = {};
                     output[group][typ] = polygon
 
+        out = {};
         full_region = [];
         if vers == 'from_named_regions':
             polygons = [];
@@ -7477,13 +7510,19 @@ class WORLD:
                 region_polys[name] = polygon
 
             for group in REGIONS:
-                for typ in REGIONS[group]:
+                for typ in ['pickup','dropoff']:
                     name = REGIONS[group][typ];
                     if not(group in output): output[group] = {};
                     output[group][typ] = region_polys[name]
                     polygons.append(region_polys[name]);
 
-        return polygons,output,full_region
+            out['group_polygons_dict'] = region_polys;
+
+        out['group_polygons'] = polygons;
+        out['group_data'] = output;
+        out['full_region'] = full_region;
+
+        return out; #polygons,output,full_region
 
 
 
@@ -8782,6 +8821,7 @@ def generate_polygons(vers,center_point=[],path='',region_details={}):
                 if not(group in output): output[group] = {};
                 output[group][typ] = polygon
 
+    out = {};
     full_region = [];
     if vers == 'from_named_regions':
         polygons = [];
@@ -8803,7 +8843,14 @@ def generate_polygons(vers,center_point=[],path='',region_details={}):
                 output[group][typ] = region_polys[name]
                 polygons.append(region_polys[name]);
 
-    return polygons,output,full_region
+            out['group_polygon_dict'] = region_polys;
+
+        out['group_polygons'] = polygons;
+        out['group_data'] = output;
+        out['full_region'] = full_region;
+
+
+    return out; #polygons,output,full_region
 
 
 
@@ -11134,7 +11181,7 @@ class NETWORK:
                 # 0.5278 vehicles /second/lane
                 capacity = lanes * 0.5278
                 travel_time = length/maxspeed
-                pwr = 1;
+                pwr = 3;
                 t0 = travel_time;
                 fac = 0.15; # SHOULD BE 0.15
                 t1 = travel_time*fac*np.power((1./capacity),pwr);
@@ -12846,12 +12893,21 @@ def plotODs(GRAPHS,SIZES,NODES,scale=1.,figsize=(15,15),ax=None,with_regions=Fal
                             figsize=figsize,
                             show=False); #file_format='svg')
         if with_regions:
-            for i,shape in enumerate(group_polygons):
-                if i<len(colors): color = colors[i][:3]; alpha = colors[i][3];
-                else: color = [0,0,0]; alpha = 0.3;
-                plotCvxHull(ax,shape,params = {'color':color,'alpha':alpha});
+
+            if isinstance(group_polygons,dict):
+                for i,shape in enumerate(group_polygons):
+                    SHAPE = group_polygons[shape]
+                    if i<len(colors): color = colors[i][:3]; alpha = colors[i][3];
+                    else: color = [0,0,0]; alpha = 0.3;
+                    plotCvxHull(ax,SHAPE,params = {'color':color,'alpha':alpha});
+            else:
+                for i,shape in enumerate(group_polygons):
+                    if i<len(colors): color = colors[i][:3]; alpha = colors[i][3];
+                    else: color = [0,0,0]; alpha = 0.3;
+                    plotCvxHull(ax,shape,params = {'color':color,'alpha':alpha});
+
         
-        print(save_file)
+        # print(save_file)
         if not(save_file==None):
             plt.savefig(save_file,bbox_inches='tight',pad_inches = 0,transparent=True)            
             # plt.show()
@@ -12869,7 +12925,7 @@ def plotODs(GRAPHS,SIZES,NODES,scale=1.,figsize=(15,15),ax=None,with_regions=Fal
 
 
 
-def plotShapesOnGraph(GRAPHS,shapes,figsize=(10,10),ax=None):
+def plotShapesOnGraph(GRAPHS,shapes,show_labels=False,figsize=(10,10),ax=None):
     if not(ax==None):
         print('drawing shapes')
         plt.sca(ax)
@@ -12892,9 +12948,26 @@ def plotShapesOnGraph(GRAPHS,shapes,figsize=(10,10),ax=None):
     
 
 
+    if isinstance(shapes,dict):
+        for shape in shapes:
+            SHAPE = shapes[shape];
+            plotCvxHull(ax,SHAPE,params = {});
+            if show_labels:
+                xy = np.mean(SHAPE,0)
+                dxy = np.array([0.0,0.01]);
+                plt.annotate(shape,
+                    xy=xy,
+                    horizontalalignment='left',
+                    verticalalignment='center',
+                    ); 
+                    # xytext=xy+dxy,
+                    # arrowprops=dict(arrowstyle="->")
+                    # )
 
-    for shape in shapes:
-        plotCvxHull(ax,shape,params = {});
+    else: 
+        for shape in shapes:
+            plotCvxHull(ax,shape,params = {});
+
     plt.show()
         # group_polygons = [np.random.rand(10,2) for i in range(5)];
 
